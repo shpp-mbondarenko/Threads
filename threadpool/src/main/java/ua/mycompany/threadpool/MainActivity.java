@@ -4,9 +4,7 @@ import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
@@ -35,10 +33,9 @@ public class MainActivity extends AppCompatActivity {
     Bitmap[] pictures;
     final int NUMBER_OF_CORES = Runtime.getRuntime().availableProcessors();
     static int t = -1;
-    int j;
+
     int u;
     static int barProgress = 0;
-    static int forPicture = 0;
     SeekBar seekBar;
     // Progress Dialog
     private ProgressDialog pDialog;
@@ -72,9 +69,9 @@ public class MainActivity extends AppCompatActivity {
         h = new Handler() {
             @Override
             public void handleMessage(Message msg) {
-               addGridView();
-                seekBar.setProgress((barProgress++)*2);
-                if ((barProgress)*2 == 98) {
+                addGridView();
+                seekBar.setProgress((barProgress++) * 2);
+                if ((barProgress) * 2 == 98) {
                     seekBar.setVisibility(View.GONE);
                 }
             }
@@ -82,7 +79,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void addGridView(){
+    private void addGridView() {
         Log.d(LOG_TAG, "IN addGridView");
         OneBitmap[] bitmaps = new OneBitmap[pictures.length];
         for (int i = 0; i < pictures.length; i++) {
@@ -92,10 +89,13 @@ public class MainActivity extends AppCompatActivity {
         gridView.setAdapter(new BitmapAdapter(this, bitmaps));
     }
 
+    /**
+     * multithreading. Downloading pictures.
+     */
     private void doExecutorService() {
         ExecutorService service = Executors.newFixedThreadPool(5);
         Runnable[] queue = new Runnable[5];
-        for ( u = 0; u < 5; u++) {
+        for (u = 0; u < 5; u++) {
             queue[u] = new Runnable() {
                 @Override
                 public void run() {
@@ -106,8 +106,8 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         i = 1;
                     }
-                    int x = (i*t*10)+10;
-                    for (i = x-10; i < x; i++) {
+                    int x = (i * t * 10) + 10;
+                    for (i = x - 10; i < x; i++) {
                         Log.d(LOG_TAG, "Thread: t =" + t + " i =" + i);
                         pictures[i] = getBitmapFromURL(urlArray[i]);
                         h.sendEmptyMessage(i);
@@ -117,15 +117,15 @@ public class MainActivity extends AppCompatActivity {
             };
         }
         Log.d(LOG_TAG, "LENGHT - " + queue.length);
-        for (int y = 0; y<5; y++) {
+        for (int y = 0; y < 5; y++) {
             service.submit(queue[y]);
         }
     }
 
     private void downloadPictures() {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                NUMBER_OF_CORES*2,
-                NUMBER_OF_CORES*2,
+                NUMBER_OF_CORES * 2,
+                NUMBER_OF_CORES * 2,
                 60L,
                 TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>()
@@ -175,11 +175,11 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Create array of URL. Read from file, put in array.
-     * */
+     */
     private String[] createArrayOfURL() {
-        String [] res = new String[100];
+        String[] res = new String[100];
         BufferedReader reader;
-        try{
+        try {
             String b = "links2";
             final InputStream file = getAssets().open(b);
             Log.d(LOG_TAG, "Reading...");
@@ -188,13 +188,13 @@ public class MainActivity extends AppCompatActivity {
             int i = 0;
             res[i] = line;
             Log.d(LOG_TAG, "Line is -" + i + " " + line);
-            while(line != null){
+            while (line != null) {
                 i++;
                 line = reader.readLine();
                 res[i] = line;
                 Log.d(LOG_TAG, "Line is -" + i + " " + line);
             }
-        } catch(IOException ioe){
+        } catch (IOException ioe) {
             ioe.printStackTrace();
             Log.d(LOG_TAG, "Crash to read...");
         }
@@ -203,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Get bitmap from URL. Download and resize him.
-     * */
+     */
     public Bitmap getBitmapFromURL(String src) {
         try {
             java.net.URL url = new java.net.URL(src);
@@ -218,26 +218,14 @@ public class MainActivity extends AppCompatActivity {
             return resized;
         } catch (IOException e) {
             e.printStackTrace();
-            Log.d(LOG_TAG,"Picture not loaded");
+            Log.d(LOG_TAG, "Picture not loaded");
             return null;
         }
     }
 
-//    private void addImageView(Bitmap bitmap) {
-//        LayoutParams lp =  new LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
-//
-//        ImageView iv = new ImageView(getApplicationContext());
-//        iv.setPadding(4, 4, 4, 4);
-////        iv.setBackgroundColor(Color.GREEN);
-//        iv.setLayoutParams(lp);
-////        iv.setImageResource(bitmap);
-//        iv.setImageBitmap(bitmap);
-////        linLayout.addView(iv,lp);
-//    }
-
     /**
      * Showing Dialog
-     * */
+     */
     @Override
     protected Dialog onCreateDialog(int id) {
         switch (id) {
@@ -254,71 +242,5 @@ public class MainActivity extends AppCompatActivity {
                 return null;
         }
     }
-
-    /**
-     * Background Async Task to download file
-     * */
-    class DownloadFileFromURL extends AsyncTask<String, Integer, String> {
-
-        /**
-         * Before starting background thread
-         * Show Progress Bar Dialog
-         * */
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            showDialog(progress_bar_type);
-        }
-
-        /**
-         * Downloading file in background thread
-         * */
-        @Override
-        protected String doInBackground(String... f_url) {
-            try {
-                //----------------------------------------------------------------
-                for (int i = 0; i < 69; i++) {
-                    //                Thread.sleep(1000);
-                    Log.d(LOG_TAG, "Threaddd - " + urlArray[i]);
-                    pictures[i] = getBitmapFromURL(urlArray[i]);
-                    publishProgress(i);
-                    Log.d(LOG_TAG, "Thread - " + i);
-                }
-
-                //-------------------------------------------------------------------------
-
-
-            } catch (Exception e) {
-                Log.e("Error: ", e.getMessage());
-            }
-
-            return null;
-        }
-
-        /**
-         * Updating progress bar
-         * */
-        protected void onProgressUpdate(Integer... progress) {
-            // setting progress percentage
-
-//            addImageView(pictures[progress[0]]);
-            pDialog.setProgress(progress[0]);
-        }
-
-        /**
-         * After completing background task
-         * Dismiss the progress dialog
-         * **/
-        @Override
-        protected void onPostExecute(String file_url) {
-            // dismiss the dialog after the file was downloaded
-            dismissDialog(progress_bar_type);
-
-            // Displaying downloaded image into image view
-            // Reading image path from sdcard
-            String imagePath = Environment.getExternalStorageDirectory().toString() + "/downloadedfile.jpg";
-            // setting downloaded into image view
-//            my_image.setImageDrawable(Drawable.createFromPath(imagePath));
-        }
-    }
 }
+
