@@ -1,0 +1,324 @@
+package ua.mycompany.threadpool;
+
+import android.app.Dialog;
+import android.app.ProgressDialog;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
+import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
+import android.view.View;
+import android.widget.GridView;
+import android.widget.SeekBar;
+
+import com.melnykov.fab.FloatingActionButton;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+public class MainActivity extends AppCompatActivity {
+    final String LOG_TAG = "myLogs";
+    GridView gridView;
+    String[] urlArray;
+    Bitmap[] pictures;
+    final int NUMBER_OF_CORES = Runtime.getRuntime().availableProcessors();
+    static int t = -1;
+    int j;
+    int u;
+    static int barProgress = 0;
+    static int forPicture = 0;
+    SeekBar seekBar;
+    // Progress Dialog
+    private ProgressDialog pDialog;
+    // Progress dialog type (0 - for Horizontal progress bar)
+    public static final int progress_bar_type = 0;
+
+    Handler h;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.main);
+
+        //fill array of url
+        urlArray = createArrayOfURL();
+        gridView = (GridView) findViewById(R.id.gridView);
+        seekBar = (SeekBar) findViewById(R.id.seekBar);
+        seekBar.setMax(100);
+        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
+        fab.attachToListView(gridView);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                doExecutorService();
+            }
+        });
+
+
+        pictures = new Bitmap[urlArray.length];
+
+        h = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+               addGridView();
+                seekBar.setProgress((barProgress++)*2);
+                if ((barProgress)*2 == 98) {
+                    seekBar.setVisibility(View.GONE);
+                }
+            }
+        };
+
+    }
+
+    private void addGridView(){
+        Log.d(LOG_TAG, "IN addGridView");
+        OneBitmap[] bitmaps = new OneBitmap[pictures.length];
+        for (int i = 0; i < pictures.length; i++) {
+            bitmaps[i] = new OneBitmap(pictures[i]);
+        }
+
+        gridView.setAdapter(new BitmapAdapter(this, bitmaps));
+    }
+
+    private void doExecutorService() {
+        ExecutorService service = Executors.newFixedThreadPool(5);
+        Runnable[] queue = new Runnable[5];
+        for ( u = 0; u < 5; u++) {
+            queue[u] = new Runnable() {
+                @Override
+                public void run() {
+                    int i;
+                    t++;
+                    if (t == 0) {
+                        i = 0;
+                    } else {
+                        i = 1;
+                    }
+                    int x = (i*t*10)+10;
+                    for (i = x-10; i < x; i++) {
+                        Log.d(LOG_TAG, "Thread: t =" + t + " i =" + i);
+                        pictures[i] = getBitmapFromURL(urlArray[i]);
+                        h.sendEmptyMessage(i);
+
+                    }
+                }
+            };
+        }
+        Log.d(LOG_TAG, "LENGHT - " + queue.length);
+        for (int y = 0; y<5; y++) {
+            service.submit(queue[y]);
+        }
+    }
+
+    private void downloadPictures() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                NUMBER_OF_CORES*2,
+                NUMBER_OF_CORES*2,
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>()
+        );
+        executor.execute(new Runnable() {
+            public void run() {
+                MainActivity.this.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        showDialog(progress_bar_type);
+
+                    }
+                });
+                // Do some long running operation in background
+                // on a worker thread in the thread pool of
+                // ThreadPoolExecutor
+                for (int i = 0; i < urlArray.length; i++) {
+
+                    Log.d(LOG_TAG, "Thread - " + urlArray[i]);
+                    pictures[i] = getBitmapFromURL(urlArray[i]);
+
+                    MainActivity.this.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            t++;
+//                            addImageView(pictures[t]);
+                            pDialog.setProgress(t);
+                        }
+                    });
+
+
+                    Log.d(LOG_TAG, "Thread - " + i);
+                }
+
+                MainActivity.this.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        dismissDialog(progress_bar_type);
+
+                    }
+                });
+
+
+            }
+        });
+    }
+
+    /**
+     * Create array of URL. Read from file, put in array.
+     * */
+    private String[] createArrayOfURL() {
+        String [] res = new String[100];
+        BufferedReader reader;
+        try{
+            String b = "links2";
+            final InputStream file = getAssets().open(b);
+            Log.d(LOG_TAG, "Reading...");
+            reader = new BufferedReader(new InputStreamReader(file));
+            String line = reader.readLine();
+            int i = 0;
+            res[i] = line;
+            Log.d(LOG_TAG, "Line is -" + i + " " + line);
+            while(line != null){
+                i++;
+                line = reader.readLine();
+                res[i] = line;
+                Log.d(LOG_TAG, "Line is -" + i + " " + line);
+            }
+        } catch(IOException ioe){
+            ioe.printStackTrace();
+            Log.d(LOG_TAG, "Crash to read...");
+        }
+        return res;
+    }
+
+    /**
+     * Get bitmap from URL. Download and resize him.
+     * */
+    public Bitmap getBitmapFromURL(String src) {
+        try {
+            java.net.URL url = new java.net.URL(src);
+            HttpURLConnection connection = (HttpURLConnection) url
+                    .openConnection();
+            connection.setDoInput(true);
+            connection.connect();
+            InputStream input = connection.getInputStream();
+            Bitmap myBitmap = BitmapFactory.decodeStream(input);
+            //resize bitmap
+            Bitmap resized = Bitmap.createScaledBitmap(myBitmap, 160, 160, true);
+            return resized;
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.d(LOG_TAG,"Picture not loaded");
+            return null;
+        }
+    }
+
+//    private void addImageView(Bitmap bitmap) {
+//        LayoutParams lp =  new LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
+//
+//        ImageView iv = new ImageView(getApplicationContext());
+//        iv.setPadding(4, 4, 4, 4);
+////        iv.setBackgroundColor(Color.GREEN);
+//        iv.setLayoutParams(lp);
+////        iv.setImageResource(bitmap);
+//        iv.setImageBitmap(bitmap);
+////        linLayout.addView(iv,lp);
+//    }
+
+    /**
+     * Showing Dialog
+     * */
+    @Override
+    protected Dialog onCreateDialog(int id) {
+        switch (id) {
+            case progress_bar_type: // we set this to 0
+                pDialog = new ProgressDialog(this);
+                pDialog.setMessage("Downloading file. Please wait...");
+                pDialog.setIndeterminate(false);
+                pDialog.setMax(100);
+                pDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+                pDialog.setCancelable(true);
+                pDialog.show();
+                return pDialog;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Background Async Task to download file
+     * */
+    class DownloadFileFromURL extends AsyncTask<String, Integer, String> {
+
+        /**
+         * Before starting background thread
+         * Show Progress Bar Dialog
+         * */
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            showDialog(progress_bar_type);
+        }
+
+        /**
+         * Downloading file in background thread
+         * */
+        @Override
+        protected String doInBackground(String... f_url) {
+            try {
+                //----------------------------------------------------------------
+                for (int i = 0; i < 69; i++) {
+                    //                Thread.sleep(1000);
+                    Log.d(LOG_TAG, "Threaddd - " + urlArray[i]);
+                    pictures[i] = getBitmapFromURL(urlArray[i]);
+                    publishProgress(i);
+                    Log.d(LOG_TAG, "Thread - " + i);
+                }
+
+                //-------------------------------------------------------------------------
+
+
+            } catch (Exception e) {
+                Log.e("Error: ", e.getMessage());
+            }
+
+            return null;
+        }
+
+        /**
+         * Updating progress bar
+         * */
+        protected void onProgressUpdate(Integer... progress) {
+            // setting progress percentage
+
+//            addImageView(pictures[progress[0]]);
+            pDialog.setProgress(progress[0]);
+        }
+
+        /**
+         * After completing background task
+         * Dismiss the progress dialog
+         * **/
+        @Override
+        protected void onPostExecute(String file_url) {
+            // dismiss the dialog after the file was downloaded
+            dismissDialog(progress_bar_type);
+
+            // Displaying downloaded image into image view
+            // Reading image path from sdcard
+            String imagePath = Environment.getExternalStorageDirectory().toString() + "/downloadedfile.jpg";
+            // setting downloaded into image view
+//            my_image.setImageDrawable(Drawable.createFromPath(imagePath));
+        }
+    }
+}
