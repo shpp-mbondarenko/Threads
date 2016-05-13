@@ -1,7 +1,5 @@
 package ua.mycompany.threadpool;
 
-import android.app.Dialog;
-import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
@@ -11,7 +9,8 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.GridView;
-import android.widget.SeekBar;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import com.melnykov.fab.FloatingActionButton;
 
@@ -22,8 +21,6 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity {
@@ -31,18 +28,20 @@ public class MainActivity extends AppCompatActivity {
     GridView gridView;
     String[] urlArray;
     Bitmap[] pictures;
-    final int NUMBER_OF_CORES = Runtime.getRuntime().availableProcessors();
     static int t = -1;
-
-    int u;
+    long filesLeftToDownload = 0;
+    long filesDownloaded = 0;
+    long averageTime = 0;
+    long totalTime = 0;
+    int quantityOfFiles = 100;
+    long remainingTime = 0;
     static int barProgress = 0;
-    SeekBar seekBar;
-    // Progress Dialog
-    private ProgressDialog pDialog;
-    // Progress dialog type (0 - for Horizontal progress bar)
-    public static final int progress_bar_type = 0;
+    TextView tVDownloadingText;
+    ProgressBar progressBar;
 
-    Handler h;
+
+
+    static Handler h;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,9 +50,11 @@ public class MainActivity extends AppCompatActivity {
 
         //fill array of url
         urlArray = createArrayOfURL();
+
         gridView = (GridView) findViewById(R.id.gridView);
-        seekBar = (SeekBar) findViewById(R.id.seekBar);
-        seekBar.setMax(100);
+        tVDownloadingText = (TextView) findViewById(R.id.downloadingText);
+        progressBar = (ProgressBar) findViewById(R.id.progressBar);
+        progressBar.setMax(100);
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.attachToListView(gridView);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -64,15 +65,23 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
-        pictures = new Bitmap[urlArray.length];
+        pictures = new Bitmap[urlArray.length+10];
 
         h = new Handler() {
             @Override
             public void handleMessage(Message msg) {
                 addGridView();
-                seekBar.setProgress((barProgress++) * 2);
-                if ((barProgress) * 2 == 98) {
-                    seekBar.setVisibility(View.GONE);
+                remainingTime = (remainingTime - (averageTime)/5);
+                Long tmp = TimeUnit.MILLISECONDS.toSeconds(remainingTime);
+
+                progressBar.setProgress((barProgress++) * (100 / quantityOfFiles));
+                tVDownloadingText.setText("Downloading ends approximately in " +
+                        tmp + " sec.");
+
+                Log.d(LOG_TAG,"time - " + tmp);
+                if ((barProgress) * (100 / quantityOfFiles) == 98) {
+                    progressBar.setVisibility(View.GONE);
+                    tVDownloadingText.setVisibility(View.GONE);
                 }
             }
         };
@@ -94,8 +103,8 @@ public class MainActivity extends AppCompatActivity {
      */
     private void doExecutorService() {
         ExecutorService service = Executors.newFixedThreadPool(5);
-        Runnable[] queue = new Runnable[5];
-        for (u = 0; u < 5; u++) {
+        Runnable[] queue = new Runnable[(quantityOfFiles / 10)];
+        for (int u = 0; u < (quantityOfFiles / 10); u++) {
             queue[u] = new Runnable() {
                 @Override
                 public void run() {
@@ -117,67 +126,16 @@ public class MainActivity extends AppCompatActivity {
             };
         }
         Log.d(LOG_TAG, "LENGHT - " + queue.length);
-        for (int y = 0; y < 5; y++) {
+        for (int y = 0; y < (quantityOfFiles / 10); y++) {
             service.submit(queue[y]);
         }
-    }
-
-    private void downloadPictures() {
-        ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                NUMBER_OF_CORES * 2,
-                NUMBER_OF_CORES * 2,
-                60L,
-                TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>()
-        );
-        executor.execute(new Runnable() {
-            public void run() {
-                MainActivity.this.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        showDialog(progress_bar_type);
-
-                    }
-                });
-                // Do some long running operation in background
-                // on a worker thread in the thread pool of
-                // ThreadPoolExecutor
-                for (int i = 0; i < urlArray.length; i++) {
-
-                    Log.d(LOG_TAG, "Thread - " + urlArray[i]);
-                    pictures[i] = getBitmapFromURL(urlArray[i]);
-
-                    MainActivity.this.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            t++;
-//                            addImageView(pictures[t]);
-                            pDialog.setProgress(t);
-                        }
-                    });
-
-
-                    Log.d(LOG_TAG, "Thread - " + i);
-                }
-
-                MainActivity.this.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        dismissDialog(progress_bar_type);
-
-                    }
-                });
-
-
-            }
-        });
     }
 
     /**
      * Create array of URL. Read from file, put in array.
      */
     private String[] createArrayOfURL() {
-        String[] res = new String[100];
+        String[] res = new String[quantityOfFiles+50];
         BufferedReader reader;
         try {
             String b = "links2";
@@ -206,6 +164,7 @@ public class MainActivity extends AppCompatActivity {
      */
     public Bitmap getBitmapFromURL(String src) {
         try {
+            long startTime = System.currentTimeMillis();
             java.net.URL url = new java.net.URL(src);
             HttpURLConnection connection = (HttpURLConnection) url
                     .openConnection();
@@ -214,6 +173,12 @@ public class MainActivity extends AppCompatActivity {
             InputStream input = connection.getInputStream();
             Bitmap myBitmap = BitmapFactory.decodeStream(input);
             //resize bitmap
+            long elapsedTime = System.currentTimeMillis() - startTime;
+
+            averageTime = elapsedTime;
+            if (remainingTime == 0) remainingTime = (averageTime*quantityOfFiles)/5;
+//            remainingTime = calculateRemainingTime(elapsedTime);
+
             Bitmap resized = Bitmap.createScaledBitmap(myBitmap, 160, 160, true);
             return resized;
         } catch (IOException e) {
@@ -223,24 +188,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Showing Dialog
-     */
-    @Override
-    protected Dialog onCreateDialog(int id) {
-        switch (id) {
-            case progress_bar_type: // we set this to 0
-                pDialog = new ProgressDialog(this);
-                pDialog.setMessage("Downloading file. Please wait...");
-                pDialog.setIndeterminate(false);
-                pDialog.setMax(100);
-                pDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-                pDialog.setCancelable(true);
-                pDialog.show();
-                return pDialog;
-            default:
-                return null;
-        }
+    private long calculateRemainingTime(long elapsedTime) {
+        Log.d(LOG_TAG, "In calculate");
+
+        if (remainingTime == 0) filesLeftToDownload = quantityOfFiles;
+        if (averageTime == 0) totalTime = elapsedTime;
+        averageTime = (totalTime + elapsedTime)/filesDownloaded;
+        long res = 0;
+        res = (averageTime*filesLeftToDownload)/5;
+        return res;
     }
 }
 
